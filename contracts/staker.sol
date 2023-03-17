@@ -43,7 +43,7 @@ claim();
           function claim() public{        
                 require(staked[msg.sender]>0, "staked is <= 0");
                 uint256 secondsStaked = block.timestamp - stakedfromTS[msg.sender];
-                uint256 rewards = staked[msg.sender] * secondsStaked / 3.154e7;            
+                uint256 rewards = staked[msg.sender] * secondsStaked / 60;            
                 _mint(msg.sender, rewards);
                 stakedfromTS[msg.sender] = block.timestamp;
               
