@@ -4,25 +4,44 @@
 // You can also run a script with `npx hardhat run <script>`. If you do that, Hardhat
 // will compile your contracts, add the Hardhat Runtime Environment's members to the
 // global scope, and execute the script.
-const hre = require("hardhat");
+// const hre = require("hardhat");
+
+// async function main() {
+//   const currentTimestampInSeconds = Math.round(Date.now() / 1000);
+//   const unlockTime = currentTimestampInSeconds + 60;
+
+//   const lockedAmount = hre.ethers.utils.parseEther("0.001");
+
+//   const Lock = await hre.ethers.getContractFactory("Lock");
+//   const lock = await Lock.deploy(unlockTime, { value: lockedAmount });
+
+//   await lock.deployed();
+
+//   console.log(
+//     `Lock with ${ethers.utils.formatEther(
+//       lockedAmount
+//     )}ETH and unlock timestamp ${unlockTime} deployed to ${lock.address}`
+//   );
+// }
+
+
 
 async function main() {
-  const currentTimestampInSeconds = Math.round(Date.now() / 1000);
-  const unlockTime = currentTimestampInSeconds + 60;
+  
+  const [owner] = await ethers.getSigners();
 
-  const lockedAmount = hre.ethers.utils.parseEther("0.001");
-
-  const Lock = await hre.ethers.getContractFactory("Lock");
-  const lock = await Lock.deploy(unlockTime, { value: lockedAmount });
-
-  await lock.deployed();
-
-  console.log(
-    `Lock with ${ethers.utils.formatEther(
-      lockedAmount
-    )}ETH and unlock timestamp ${unlockTime} deployed to ${lock.address}`
-  );
-}
+  // Grab Contract Factory
+    const Staker = await ethers.getContractFactory("FixedStaking");
+  
+       // Start deployment, returning a promise that resolves to a contract object
+    const staker= await Staker.deploy(); // Instance of the contract 
+  const bal= await staker.balanceOf(owner.address) ;
+  console.log(owner.address);
+  console.log(Staker.address);
+    console.log(
+      "The balance is :", bal );
+  }
+  
 
 // We recommend this pattern to be able to use async/await everywhere
 // and properly handle errors.

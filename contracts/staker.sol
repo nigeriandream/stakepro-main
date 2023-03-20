@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.17;
  import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+ import "hardhat/console.sol";
 
 
 contract FixedStaking is ERC20 {
@@ -13,6 +14,7 @@ constructor() ERC20 ("Fixed Staking", "FIX")  { // Token description
         //  uint constant _initial_supply= 10**18;  Initial deposit in creators wallet 
 
         _mint(msg.sender, 10**18);
+          console.log( "Balance: ", balanceOf(msg.sender) );
 
     }
 function stake(uint256 amount)external{
