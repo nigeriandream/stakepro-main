@@ -14,9 +14,8 @@ contract StakePro is ReentrancyGuard, ILido {
     using SafeMath for uint256;
     using SafeERC20 for IERC20;
 
-    ILido public lido = ILido(0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84);
+    ILido public lido = ILido(0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84); // integrate Lido interface
     uint256 public serviceFeePercentage;
-    address public lidoContract; // staked ETH contract address
     address public stakeProContract;
     address public owner;
 
@@ -54,7 +53,6 @@ contract StakePro is ReentrancyGuard, ILido {
 
     constructor(uint256 _serviceFeePercentage) {
         require(_serviceFeePercentage <= 100, "Invalid service fee");
-
         owner = msg.sender;
         stakeProContract = address(this);
         serviceFeePercentage = _serviceFeePercentage;
