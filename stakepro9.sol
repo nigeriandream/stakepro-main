@@ -5,16 +5,49 @@ import "@openzeppelin/contracts/interfaces/IERC20.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
-import "./ILido.sol";
+
+// import "./ILido.sol";
 
 // import "@lido/dao/contracts/0.4.24/Lido.sol";
 // import "@openzeppelin/contracts/access/Ownable.sol";
 
-contract StakePro is ReentrancyGuard, ILido {
+interface ILido {
+    function totalSupply() external view returns (uint256);
+
+    function submit(address _referral) external payable returns (uint256);
+
+    function approve(address _spender, uint256 _amount) external returns (bool);
+
+    function allowance(
+        address _owner,
+        address _spender
+    ) external returns (uint256);
+
+    function balanceOf(address _account) external view returns (uint256);
+
+    function stake(uint256 _value, address _referral) external;
+
+    function unstake(uint256 _value) external returns (uint256);
+
+    function getReward() external returns (uint256);
+
+    function transfer(
+        address _recipient,
+        uint256 _amount
+    ) external returns (bool);
+
+    function transferFrom(
+        address _sender,
+        address _recipient,
+        uint256 _amount
+    ) external returns (bool);
+}
+
+contract StakePro is ReentrancyGuard {
     using SafeMath for uint256;
     using SafeERC20 for IERC20;
 
-    ILido public lido = ILido(0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84); // integrate Lido interface
+    ILido public lido = ILido(0x1643E812aE58766192Cf7D2Cf9567dF2C37e9B7F); // (0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84); // integrate Lido interface
     uint256 public serviceFeePercentage;
     address public stakeProContract;
     address public owner;
@@ -78,7 +111,7 @@ contract StakePro is ReentrancyGuard, ILido {
         require(lido.approve(address(this), 0), "Reset Allowance Failed");
         require(lido.approve(address(this), _amount), "Approval failed");
         require(
-            lido.allowance(_user, address(this) == _amount),
+            lido.allowance(_user, address(this)) == _amount,
             "Insufficient Allowance"
         );
 
