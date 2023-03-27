@@ -10,40 +10,7 @@ import "./ILido.sol";
 // import "@lido/dao/contracts/0.4.24/Lido.sol";
 // import "@openzeppelin/contracts/access/Ownable.sol";
 
-// define Lido interface
-interface ILido {
-    function totalSupply() external view returns (uint256);
-
-    function submit(address _referral) external payable returns (uint256);
-
-    function approve(address _spender, uint256 _amount) external returns (bool);
-
-    function allowance(
-        address _owner,
-        address _spender
-    ) external returns (uint256);
-
-    function balanceOf(address _account) external view returns (uint256);
-
-    function stake(uint256 _value, address _referral) external;
-
-    function unstake(uint256 _value) external returns (uint256);
-
-    function getReward() external returns (uint256);
-
-    function transfer(
-        address _recipient,
-        uint256 _amount
-    ) external returns (bool);
-
-    function transferFrom(
-        address _sender,
-        address _recipient,
-        uint256 _amount
-    ) external payable returns (bool);
-}
-
-contract StakePro is ReentrancyGuard {
+contract StakePro is ReentrancyGuard, ILido {
     using SafeMath for uint256;
     using SafeERC20 for IERC20;
 
