@@ -5,6 +5,7 @@ import "@openzeppelin/contracts/interfaces/IERC20.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "./ILido.sol";
 
 // import "@lido/dao/contracts/0.4.24/Lido.sol";
 // import "@openzeppelin/contracts/access/Ownable.sol";
@@ -39,14 +40,14 @@ interface ILido {
         address _sender,
         address _recipient,
         uint256 _amount
-    ) external returns (bool);
+    ) external payable returns (bool);
 }
 
 contract StakePro is ReentrancyGuard {
     using SafeMath for uint256;
     using SafeERC20 for IERC20;
 
-    ILido public lido;
+    ILido public lido = ILido(0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84);
     uint256 public serviceFeePercentage;
     address public lidoContract; // staked ETH contract address
     address public stakeProContract;
@@ -84,21 +85,20 @@ contract StakePro is ReentrancyGuard {
         uint256 timestamp
     ); //@audit-ok - should include netReward
 
-    constructor(uint256 _serviceFeePercentage, address _lidoContract) {
+    constructor(uint256 _serviceFeePercentage) {
         require(_serviceFeePercentage <= 100, "Invalid service fee");
 
         owner = msg.sender;
         stakeProContract = address(this);
-        lidoContract = _lidoContract; //0xae7ab96520de3a18e5e111b5eaab095312d7fe84;
         serviceFeePercentage = _serviceFeePercentage;
     }
 
     // stake function
     function stakeETH(
         uint256 _amount,
-        address _user,
+        address _user, //@audit - remember to determine user input for this function
         uint256 _lockDuration // only valid when lock is inactive (grey out on UI if `locked` = true)
-    ) external nonReentrant {
+    ) external payable nonReentrant {
         // Get user data
         _user = msg.sender;
         User storage user = id[_user];
@@ -106,15 +106,23 @@ contract StakePro is ReentrancyGuard {
         // Ensure amount is greater than 0
         require(_amount > 0, "must be above zero");
 
-        // Approve allowance for stakepro to spend user tokens
+        // Ensure user has sufficient balance
+        require(lido.balanceOf(_user) > _amount, "Insufficent Balance");
+
+        // Approve and verify allowance for stakepro to spend user tokens
+        require(lido.approve(address(this), 0), "Reset Allowance Failed");
         require(lido.approve(address(this), _amount), "Approval failed");
+        require(
+            lido.allowance(_user, address(this) == _amount),
+            "Insufficient Allowance"
+        );
 
         // Update user data
         user.stake = user.stake.add(_amount);
         user.events.push(Event(true, _amount, 0, block.timestamp));
 
         // Transfer tokens from user wallet to contract
-        lido.transferFrom(_user, address(this), _amount);
+        require(lido.transfer(address(this), _amount), "Token transfer failed");
 
         // Stake transferred tokens directly using Lido contract
         lido.submit{value: _amount}(address(0));
@@ -181,12 +189,20 @@ contract StakePro is ReentrancyGuard {
     }
 
     // function to retrieve a user's staking and unstaking history
-    function getUserHistory() external view returns (Event[] memory) {
-        Event[] memory events = id[msg.sender].events;
-        uint len = events.length;
-        Event[] memory result = new Event[](len);
-        for (uint i = 0; i < len; i++) {
-            result[i] = events[len.sub(i).sub(1)];
+    function getUserHistory(
+        address _user
+    ) external view returns (Event[] memory) {
+        // Get user data
+        _user = msg.sender;
+        User storage user = id[_user];
+
+        Event[] memory events = user.events;
+        uint eventsLength = events.length;
+        Event[] memory result = new Event[](eventsLength);
+
+        // iterate through the events array in reverse
+        for (uint i = 0; i < eventsLength; i++) {
+            result[i] = events[eventsLength.sub(i).sub(1)];
         }
         return result;
     }
@@ -195,21 +211,5 @@ contract StakePro is ReentrancyGuard {
     function getReward() internal returns (uint256) {
         // Call getReward function from Lido contract
         return lido.getReward();
-    }
-
-    // view function to calculate rewards for a user
-    function calcRewards(address _user) public view returns (uint256) {
-        // Get user data
-        User storage user = id[_user];
-
-        uint256 userStake = user.stake;
-        uint256 totalStake = IERC20(lidoContract).balanceOf(stakeProContract);
-        uint256 totalRewards = IERC20(lidoContract).balanceOf(address(this));
-
-        if (totalStake == 0 || userStake == 0) {
-            return 0;
-        }
-
-        return totalRewards.mul(userStake).div(totalStake);
     }
 }

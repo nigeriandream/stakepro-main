@@ -1,1 +1,17 @@
+# Project files
+spTest.sol
+stakepro10.sol
+stakepro11.sol
+notes
+
 node_modules
+.env
+coverage
+coverage.json
+typechain
+typechain-types
+
+# Hardhat files
+cache
+artifacts
+
