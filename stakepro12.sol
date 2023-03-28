@@ -4,7 +4,8 @@ pragma solidity ^0.8.17;
 import "@openzeppelin/contracts/interfaces/IERC20.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+
+// import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
 interface ILido {
     function totalSupply() external view returns (uint256);
@@ -38,7 +39,7 @@ interface ILido {
     ) external returns (bool);
 }
 
-contract StakePro is ReentrancyGuard {
+contract StakePro {
     using SafeMath for uint256;
     using SafeERC20 for IERC20;
 
@@ -85,27 +86,23 @@ contract StakePro is ReentrancyGuard {
     constructor(uint256 _serviceFeePercentage) {
         require(_serviceFeePercentage <= 100, "Invalid service fee");
         owner = msg.sender;
-        stakeProContract = address(this);
+        stakeProContract = payable(address(this));
         serviceFeePercentage = _serviceFeePercentage;
     }
 
     //modifier to restrict usage to admins or contract owner
     modifier onlyAdmin() {
-        require(
-            admins[msg.sender] || msg.sender == owner,
-            "Only admins can call this function"
-        );
+        require(admins[msg.sender] || msg.sender == owner, "unauthorised");
         _;
     }
 
     // stake function
     function stakeETH(
         uint256 _value,
-        address _user, //@audit - remember to determine user input for this function
         uint256 _lockDuration // only valid when lock is inactive (grey out on UI if `locked` = true)
     ) external payable {
         // Get user data
-        _user = payable(msg.sender);
+        address _user = payable(msg.sender);
         User storage user = id[_user];
 
         // Convert ETH value to wei
@@ -117,11 +114,11 @@ contract StakePro is ReentrancyGuard {
         // Ensure user has sufficient balance
         require(lido.balanceOf(_user) > _amount, "Insufficent Balance");
 
-        // Approve and verify allowance for stakepro to spend user tokens
+        // Reset and approve allowance for stakepro to spend user tokens
         require(lido.approve(address(this), 0), "Reset Allowance Failed");
         require(lido.approve(address(this), _amount), "Approval failed");
         require(
-            lido.allowance(_user, address(this)) == _amount,
+            lido.allowance(_user, address(this)) >= _amount,
             "Insufficient Allowance"
         );
 
@@ -240,22 +237,21 @@ contract StakePro is ReentrancyGuard {
         User storage user = id[_user];
 
         // Return lifetime rewards
-        return user.lifetimeRewards;
+        return user.lifetimeRewards.div(10 ** 18);
     }
 
     function getCurrentStake() external view returns (uint256) {
         address _user = msg.sender;
         User storage user = id[_user];
-        return user.stake;
+        return user.stake.div(10 ** 18);
     }
 
     function getWalletBalance() external view returns (uint256) {
         // Get user data
         address _user = msg.sender;
-        User storage user = id[_user];
 
         // Return user's wallet balance
-        return lido.balanceOf(_user);
+        return lido.balanceOf(_user).div(10 ** 18);
     }
 
     // function to let authorised users REGISTER admins
