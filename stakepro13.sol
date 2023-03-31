@@ -4,6 +4,7 @@ pragma solidity ^0.8.0;
 import "@openzeppelin/contracts/interfaces/IERC20.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 // import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
@@ -14,9 +15,10 @@ interface ILido {
 
     function approve(address _spender, uint256 _amount) external returns (bool);
 
-    function allowance(address _owner, address _spender)
-        external
-        returns (uint256);
+    function allowance(
+        address _owner,
+        address _spender
+    ) external returns (uint256);
 
     function balanceOf(address _account) external view returns (uint256);
 
@@ -24,9 +26,10 @@ interface ILido {
 
     function getReward() external returns (uint256);
 
-    function transfer(address _recipient, uint256 _amount)
-        external
-        returns (bool);
+    function transfer(
+        address _recipient,
+        uint256 _amount
+    ) external returns (bool);
 
     function transferFrom(
         address _sender,
@@ -35,7 +38,7 @@ interface ILido {
     ) external returns (bool);
 }
 
-contract StakePro {
+contract StakePro is ERC20 {
     using SafeMath for uint256;
     using SafeERC20 for IERC20;
 
@@ -44,6 +47,7 @@ contract StakePro {
     uint256 public serviceFeePercentage;
     address public stakeProContract;
     address public owner;
+    uint256 public stxApr;
 
     // struct to express user data
     struct User {
@@ -80,11 +84,16 @@ contract StakePro {
         uint256 timestamp
     ); //@audit-ok - should include netReward
 
-    constructor(uint256 _serviceFeePercentage) payable {
+    constructor(
+        uint256 _serviceFeePercentage,
+        uint256 _stxApr
+    ) payable ERC20("StakePro", "STX") {
+        _mint(msg.sender, 1000000000000000000);
         require(_serviceFeePercentage <= 100, "Invalid service fee");
         owner = msg.sender;
         stakeProContract = payable(address(this));
         serviceFeePercentage = _serviceFeePercentage;
+        stxApr = _stxApr;
     }
 
     //modifier to restrict usage to admins or contract owner
@@ -94,7 +103,7 @@ contract StakePro {
     }
 
     // stake function
-    function stakeETH(
+    function stake(
         uint256 _amount,
         uint256 _lockDuration // default to ZERO on UI, never blank
     ) public {
@@ -114,7 +123,10 @@ contract StakePro {
         require(_amount > 0, "Amount must be above zero");
 
         // Transfer ETH from user to Lido contract
-        lido.submit{value: _amount}(_user);
+        // lido.submit{value: _amount}(_user);
+
+        // Transfer STX from user to StakePro
+        _transfer(msg.sender, address(this), _amount);
 
         // Update user data
         user.stake = user.stake.add(_amount);
@@ -132,7 +144,7 @@ contract StakePro {
     }
 
     // unstake function
-    function unstake() external {
+    function unstake() external payable {
         // Get user data
         address _user = payable(msg.sender);
         User storage user = id[_user];
@@ -155,15 +167,15 @@ contract StakePro {
         uint256 _amount = user.stake;
 
         // Approve and verify allowance for stakepro to spend user tokens
-        require(lido.approve(address(this), 0), "Reset Allowance Failed");
-        require(lido.approve(address(this), _amount), "Approval failed");
+        require(approve(address(this), 0), "Reset Allowance Failed");
+        require(approve(address(this), _amount), "Approval failed");
         require(
-            lido.allowance(_user, address(this)) >= _amount,
+            allowance(_user, address(this)) >= _amount,
             "Insufficient Allowance"
         );
 
         // Calculate rewards
-        user.latestReward = lido.getReward();
+        user.latestReward = getUserReward();
         uint256 serviceFee = user.latestReward.mul(serviceFeePercentage).div(
             100
         );
@@ -175,36 +187,46 @@ contract StakePro {
         user.lastUnstake = block.timestamp;
         user.events.push(Event(false, _amount, netReward, block.timestamp));
 
-        // Unstake tokens from Lido
-        require(
-            lido.transferFrom(_user, address(lido), _amount),
-            "TransferFrom failed"
-        );
+        // claim rewards
+        _mint(msg.sender, netReward);
+
+        // Unstake tokens
+
+        _transfer(address(this), msg.sender, _amount);
 
         // Emit event
         emit Unstaked(_user, _amount, netReward, block.timestamp);
     }
 
+    function claim() public {
+        // Get user data
+        address _user = msg.sender;
+        User storage user = id[_user];
+
+        // ensure stake was placed
+        require(user.stake > 0, "insufficient stake");
+
+        uint256 userRewards = getUserReward();
+        _mint(msg.sender, userRewards);
+        user.lockTime = block.timestamp;
+    }
+
     // funtion to let admin transfer contract ETH to specified address
-    function transferEth(address payable recipient, uint256 _value)
-        public
-        onlyAdmin
-    {
+    function transferEth(
+        address payable recipient,
+        uint256 _value
+    ) public onlyAdmin {
         // Convert ETH value to wei
-        uint256 amount = _value.mul(10**18);
+        uint256 amount = _value.mul(10 ** 18);
 
         require(address(this).balance >= amount, "Insufficient balance");
         recipient.transfer(amount);
     }
 
     // function to retrieve a user's staking and unstaking history
-    function getUserHistory(address _user)
-        external
-        view
-        returns (Event[] memory)
-    {
+    function getUserHistory() external view returns (Event[] memory) {
         // Get user data
-        _user = msg.sender;
+        address _user = msg.sender;
         User storage user = id[_user];
 
         Event[] memory events = user.events;
@@ -219,9 +241,17 @@ contract StakePro {
     }
 
     // view function to fetch rewards for a user
-    function getUserReward() internal returns (uint256) {
-        // Call getReward function from Lido contract
-        return lido.getReward();
+    function getUserReward() public view returns (uint256) {
+        // Get user data
+        address _user = msg.sender;
+        User storage user = id[_user];
+
+        // Calculate user latest reward
+        uint256 reward = user.stake.mul(stxApr).mul(user.lockDuration).div(
+            60 seconds
+        );
+
+        return reward;
     }
 
     //view function to fetch lifetime rewards for a user
@@ -231,13 +261,13 @@ contract StakePro {
         User storage user = id[_user];
 
         // Return lifetime rewards
-        return user.lifetimeRewards.div(10**18);
+        return user.lifetimeRewards;
     }
 
     function getCurrentStake() external view returns (uint256) {
         address _user = msg.sender;
         User storage user = id[_user];
-        return user.stake.div(10**18);
+        return user.stake;
     }
 
     function getWalletBalance() external view returns (uint256) {
@@ -245,12 +275,12 @@ contract StakePro {
         address _user = payable(msg.sender);
 
         // Return user's wallet balance
-        return (_user.balance).div(10**18);
+        return (_user.balance);
     }
 
     function StakeproContractBalance() external view returns (uint256) {
         // Return user's wallet balance
-        return stakeProContract.balance.div(10**18);
+        return stakeProContract.balance;
     }
 
     // function to let authorised users REGISTER admins
