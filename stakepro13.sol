@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.17;
+pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/interfaces/IERC20.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
@@ -14,10 +14,9 @@ interface ILido {
 
     function approve(address _spender, uint256 _amount) external returns (bool);
 
-    function allowance(
-        address _owner,
-        address _spender
-    ) external returns (uint256);
+    function allowance(address _owner, address _spender)
+        external
+        returns (uint256);
 
     function balanceOf(address _account) external view returns (uint256);
 
@@ -25,10 +24,9 @@ interface ILido {
 
     function getReward() external returns (uint256);
 
-    function transfer(
-        address _recipient,
-        uint256 _amount
-    ) external returns (bool);
+    function transfer(address _recipient, uint256 _amount)
+        external
+        returns (bool);
 
     function transferFrom(
         address _sender,
@@ -82,7 +80,7 @@ contract StakePro {
         uint256 timestamp
     ); //@audit-ok - should include netReward
 
-    constructor(uint256 _serviceFeePercentage) {
+    constructor(uint256 _serviceFeePercentage) payable {
         require(_serviceFeePercentage <= 100, "Invalid service fee");
         owner = msg.sender;
         stakeProContract = payable(address(this));
@@ -97,37 +95,33 @@ contract StakePro {
 
     // stake function
     function stakeETH(
-        uint256 _value,
-        uint256 _lockDuration // only valid when lock is inactive (grey out on UI if `locked` = true)
-    ) external payable {
+        uint256 _amount,
+        uint256 _lockDuration // default to ZERO on UI, never blank
+    ) public {
         // Get user data
         address _user = msg.sender;
         User storage user = id[_user];
 
+        // Determine lock duration if not provided
+        if (_lockDuration == 0 && user.locked) {
+            _lockDuration = user.lockTime + user.lockDuration - block.timestamp;
+        }
+
         // Convert ETH value to wei
-        uint256 _amount = _value.mul(10 ** 18);
+        // uint256 _amount = msg.value;
 
         // Ensure amount is greater than 0
-        require(_amount > 0, "must be above zero");
+        require(_amount > 0, "Amount must be above zero");
 
-        // Ensure user has sufficient balance
-        require(lido.balanceOf(_user) >= _amount, "Insufficent Balance");
+        // Transfer ETH from user to Lido contract
+        lido.submit{value: _amount}(_user);
 
         // Update user data
         user.stake = user.stake.add(_amount);
         user.events.push(Event(true, _amount, 0, block.timestamp));
 
-        // Transfer tokens from user wallet to contract
-        require(
-            lido.transfer(payable(address(this)), _amount),
-            "Token transfer failed"
-        );
-
-        // Stake transferred tokens directly using Lido contract
-        lido.submit{value: _amount}(_user);
-
         // Lock the user's tokens for the specified duration
-        if (!user.locked) {
+        if (!user.locked && _lockDuration > 0) {
             user.locked = true;
             user.lockTime = block.timestamp;
             user.lockDuration = _lockDuration;
@@ -182,31 +176,33 @@ contract StakePro {
         user.events.push(Event(false, _amount, netReward, block.timestamp));
 
         // Unstake tokens from Lido
-        lido.unstake(_amount);
-
-        // Transfer tokens back to user wallet
-        require(lido.transfer(_user, _amount), "Token transfer failed");
+        require(
+            lido.transferFrom(_user, address(lido), _amount),
+            "TransferFrom failed"
+        );
 
         // Emit event
         emit Unstaked(_user, _amount, netReward, block.timestamp);
     }
 
     // funtion to let admin transfer contract ETH to specified address
-    function transferEth(
-        address payable recipient,
-        uint256 _value
-    ) public onlyAdmin {
+    function transferEth(address payable recipient, uint256 _value)
+        public
+        onlyAdmin
+    {
         // Convert ETH value to wei
-        uint256 amount = _value.mul(10 ** 18);
+        uint256 amount = _value.mul(10**18);
 
         require(address(this).balance >= amount, "Insufficient balance");
         recipient.transfer(amount);
     }
 
     // function to retrieve a user's staking and unstaking history
-    function getUserHistory(
-        address _user
-    ) external view returns (Event[] memory) {
+    function getUserHistory(address _user)
+        external
+        view
+        returns (Event[] memory)
+    {
         // Get user data
         _user = msg.sender;
         User storage user = id[_user];
@@ -235,13 +231,13 @@ contract StakePro {
         User storage user = id[_user];
 
         // Return lifetime rewards
-        return user.lifetimeRewards.div(10 ** 18);
+        return user.lifetimeRewards.div(10**18);
     }
 
     function getCurrentStake() external view returns (uint256) {
         address _user = msg.sender;
         User storage user = id[_user];
-        return user.stake.div(10 ** 18);
+        return user.stake.div(10**18);
     }
 
     function getWalletBalance() external view returns (uint256) {
@@ -249,12 +245,12 @@ contract StakePro {
         address _user = payable(msg.sender);
 
         // Return user's wallet balance
-        return _user.balance; // use the web3.utils.fromWei function on frontend to convert the balance from wei to ETH
+        return (_user.balance).div(10**18);
     }
 
-    function getStakeproBalance() external view returns (uint256) {
+    function StakeproContractBalance() external view returns (uint256) {
         // Return user's wallet balance
-        return lido.balanceOf(address(this)).div(10 ** 18);
+        return stakeProContract.balance.div(10**18);
     }
 
     // function to let authorised users REGISTER admins
@@ -267,4 +263,8 @@ contract StakePro {
         require(admins[_admin], "Address is not an admin");
         admins[_admin] = false;
     }
+
+    receive() external payable {}
+
+    fallback() external payable {}
 }
